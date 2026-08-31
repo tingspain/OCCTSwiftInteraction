@@ -89,7 +89,7 @@ let package = Package(
         // reviewed commit so this package and its host resolve one viewport URL.
         .package(
             url: "https://github.com/tingspain/OCCTSwiftViewport.git",
-            revision: "8a5acb76381c9da0827014d1b0a0055e69c6769c"
+            revision: "e67b5dcdd8d90fb0b9f1897500d0043e477137a0"
         ),
         // >=1.8.0: DirectoryWatcher (OCCTSwiftIO#43), which the agent bridge uses to notice a new
         // highlight_requests/<id>.json without polling. This was a branch pin until that shipped.
