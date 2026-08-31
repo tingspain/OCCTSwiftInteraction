@@ -46,7 +46,16 @@ public final class InteractiveContext: ObservableObject {
             if oldValue != selection { updateSelectionVisuals() }
         }
     }
-    @Published public private(set) var hover: OCCTSwiftTools.SubShape? = nil
+    /// Transient topology resolved from an occlusion-aware pointer pick.
+    ///
+    /// Hover never mutates `selection` or the source shape. It only recomposes
+    /// the presentation-only per-triangle style buffer, with a committed
+    /// selection taking visual precedence over the hovered face.
+    @Published public private(set) var hover: OCCTSwiftTools.SubShape? = nil {
+        didSet {
+            if oldValue != hover { updateSelectionVisuals() }
+        }
+    }
 
     /// Filters gating `handlePick` / `handleHover`, never programmatic
     /// `select(_:)`.
@@ -460,7 +469,13 @@ public final class InteractiveContext: ObservableObject {
             facesByObjectID[obj.id, default: []].insert(ref.ordinal)
         }
 
-        let highlightRGBA = SIMD4<Float>(highlightStyle.selectionColor, 1.0)
+        let selectionRGBA = SIMD4<Float>(highlightStyle.selectionColor, 1.0)
+        let hoverRGBA = SIMD4<Float>(highlightStyle.hoverColor, 1.0)
+
+        var hoveredFaceByObjectID: [UUID: Int] = [:]
+        if case let .face(object, ref) = hover {
+            hoveredFaceByObjectID[object.id] = ref.ordinal
+        }
 
         for (objectID, entry) in entriesByID {
             guard let bodyIdx = bodies.firstIndex(where: { $0.id == entry.bodyID }) else {
@@ -476,17 +491,21 @@ public final class InteractiveContext: ObservableObject {
                 continue
             }
             let selectedFaces = facesByObjectID[objectID] ?? []
-            if selectedFaces.isEmpty {
+            let hoveredFace = hoveredFaceByObjectID[objectID]
+            if selectedFaces.isEmpty, hoveredFace == nil {
                 if !bodies[bodyIdx].triangleStyles.isEmpty {
                     bodies[bodyIdx].triangleStyles = []
                 }
             } else {
-                let highlight = TriangleStyle(color: highlightRGBA)
                 var styles = Array(repeating: TriangleStyle.none, count: triangleCount)
                 for triIdx in 0..<triangleCount {
                     let faceIdx = Int(metadata.faceIndices[triIdx])
                     if selectedFaces.contains(faceIdx) {
-                        styles[triIdx] = highlight
+                        // A committed selection remains visually dominant while
+                        // the pointer moves across it.
+                        styles[triIdx] = TriangleStyle(color: selectionRGBA)
+                    } else if hoveredFace == faceIdx {
+                        styles[triIdx] = TriangleStyle(color: hoverRGBA)
                     }
                 }
                 bodies[bodyIdx].triangleStyles = styles
@@ -521,6 +540,29 @@ public final class InteractiveContext: ObservableObject {
         let candidate: OCCTSwiftTools.SubShape? =
             selectionMode.contains(.body) ? .body(entry.object) : nil
         hover = candidate.flatMap { passesInstalledFilters($0) ? $0 : nil }
+    }
+
+    /// Resolves a transient face hover from the viewport's visible GPU pick.
+    ///
+    /// This deliberately does not route through `ViewportController.handlePick`:
+    /// hover must neither replace `selection` nor update tap state. The same
+    /// identity tables used by click selection map the picked triangle to its
+    /// exact source face, so the rendered cyan feedback covers the whole visible
+    /// face rather than just the triangle beneath the pointer.
+    public func handleHoverPick(_ result: PickResult?) {
+        guard selectionMode.contains(.face),
+              let result,
+              result.pickLayer == .userGeometry,
+              let id = entriesByBodyID[result.bodyID],
+              let entry = entriesByID[id],
+              let candidate = resolveSubShape(from: result, entry: entry),
+              case .face = candidate,
+              passesInstalledFilters(candidate)
+        else {
+            hover = nil
+            return
+        }
+        hover = candidate
     }
 
     private func resolveSubShape(from result: PickResult, entry: Entry) -> OCCTSwiftTools.SubShape?

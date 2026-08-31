@@ -83,6 +83,64 @@ struct HighlightOverlayTests {
         #expect(abs(style.color.w - 1.0) < 1e-5)
     }
 
+    @Test func t_faceHover_writesHoverColorForTheWholeResolvedFace() throws {
+        let ctx = makeContext()
+        ctx.selectionMode = [.face]
+        let obj = ctx.display(try makeBox())
+        let body = try #require(sourceBody(ctx, target: obj))
+        let triangleIndex = try #require(body.faceIndices.indices.first)
+        let faceIndex = Int(body.faceIndices[triangleIndex])
+        let raw = UInt32(triangleIndex) << 16
+        let pick = try #require(PickResult(rawValue: raw, indexMap: [0: body.id]))
+
+        ctx.handleHoverPick(pick)
+
+        let hover = try #require(ctx.hover)
+        #expect(containsFace(Set([hover]), obj, ordinal: faceIndex))
+        let refreshed = try #require(sourceBody(ctx, target: obj))
+        for index in refreshed.triangleStyles.indices where Int(refreshed.faceIndices[index]) == faceIndex {
+            #expect(refreshed.triangleStyles[index].color == SIMD4<Float>(0.3, 0.8, 1.0, 1.0))
+        }
+    }
+
+    @Test func t_selectedFaceTakesVisualPrecedenceOverHover() throws {
+        let ctx = makeContext()
+        ctx.selectionMode = [.face]
+        let obj = ctx.display(try makeBox())
+        let body = try #require(sourceBody(ctx, target: obj))
+        let triangleIndex = try #require(body.faceIndices.indices.first)
+        let faceIndex = Int(body.faceIndices[triangleIndex])
+        let raw = UInt32(triangleIndex) << 16
+        let pick = try #require(PickResult(rawValue: raw, indexMap: [0: body.id]))
+
+        ctx.handlePick(pick)
+        ctx.handleHoverPick(pick)
+
+        let refreshed = try #require(sourceBody(ctx, target: obj))
+        for index in refreshed.triangleStyles.indices where Int(refreshed.faceIndices[index]) == faceIndex {
+            #expect(refreshed.triangleStyles[index].color == SIMD4<Float>(1.0, 0.65, 0.0, 1.0))
+        }
+    }
+
+    @Test func t_hoverMiss_clearsTransientTriangleStylesWithoutChangingSelection() throws {
+        let ctx = makeContext()
+        ctx.selectionMode = [.face]
+        let obj = ctx.display(try makeBox())
+        let body = try #require(sourceBody(ctx, target: obj))
+        let raw = UInt32(0) << 16
+        let pick = try #require(PickResult(rawValue: raw, indexMap: [0: body.id]))
+
+        ctx.handleHoverPick(pick)
+        let hoveredBody = try #require(sourceBody(ctx, target: obj))
+        #expect(!hoveredBody.triangleStyles.isEmpty)
+        ctx.handleHoverPick(nil)
+
+        #expect(ctx.hover == nil)
+        #expect(ctx.selection.isEmpty)
+        let clearedBody = try #require(sourceBody(ctx, target: obj))
+        #expect(clearedBody.triangleStyles.isEmpty)
+    }
+
     @Test func t_setHighlightStyle_updatesLiveStyles() throws {
         let ctx = makeContext()
         ctx.selectionMode = [.face]

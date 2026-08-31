@@ -84,10 +84,13 @@ let package = Package(
         // accessors became Optional (OCCTSwift docs/SEMVER.md#v300). Audited across all three
         // targets during the v3.0.0 fanout (ecosystem#39): none needed a source change for it.
         occtDep("OCCTSwift", from: "3.0.0"),
-        // >=1.2.0: fixes a Swift 6 concurrency crash where unannotated MTLCommandBufferHandler
-        // closures inherited @MainActor on Xcode 16.4, giving a SIGTRAP after every test reported
-        // green. Real-GPU/Xcode-16.4 only, and masked locally by Xcode 26.x's NS_SWIFT_SENDABLE.
-        occtDep("OCCTSwiftViewport", from: "1.2.0"),
+        // ShiftCAD's maintained viewport fork supplies the transient,
+        // selection-neutral point-pick API used for face hover. Pin the exact
+        // reviewed commit so this package and its host resolve one viewport URL.
+        .package(
+            url: "https://github.com/tingspain/OCCTSwiftViewport.git",
+            revision: "8a5acb76381c9da0827014d1b0a0055e69c6769c"
+        ),
         // >=1.8.0: DirectoryWatcher (OCCTSwiftIO#43), which the agent bridge uses to notice a new
         // highlight_requests/<id>.json without polling. This was a branch pin until that shipped.
         occtDep("OCCTSwiftIO", from: "1.8.0"),

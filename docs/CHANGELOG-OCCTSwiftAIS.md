@@ -9,6 +9,15 @@ Most recent first. Breaking changes and deprecations documented here.
 
 ## Unreleased
 
+### Face-level GPU hover feedback
+
+`InteractiveContext.handleHoverPick(_:)` resolves an occlusion-aware viewport
+pick through the same face identity table used by click selection. It updates
+only transient `hover` state and the renderer-backed triangle style buffer;
+it never changes `selection` or the source `Shape`. Hovered faces use
+`HighlightStyle.hoverColor`; selected faces retain `selectionColor` when both
+refer to the same face.
+
 ### New: `PresentationStyle.agentHighlight`
 
 Part of [OCCTSwiftInteraction#16](https://github.com/SecondMouseAU/OCCTSwiftInteraction/issues/16),

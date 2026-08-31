@@ -126,13 +126,16 @@ Changing `selectionMode` also clears the current selection.
   highlight kicks in.
 - `.face` selections write per-triangle style entries to the source body's `triangleStyles`,
   composited by the renderer's highlight pass. Color comes from `HighlightStyle.selectionColor`.
+- A host may pass a transient visible `PickResult` to `handleHoverPick(_:)` for
+  face-level hover. It uses `HighlightStyle.hoverColor`, clears on a miss, and
+  never changes the committed selection.
 
 Tweak the highlight color:
 
 ```swift
 ais.setHighlightStyle(HighlightStyle(
     selectionColor: SIMD3<Float>(1.0, 0.65, 0.0),  // orange
-    hoverColor:     SIMD3<Float>(0.3, 0.8, 1.0),   // cyan (body-level only today)
+    hoverColor:     SIMD3<Float>(0.3, 0.8, 1.0),   // cyan face hover
     outlineWidth:   2.0
 ))
 ```
