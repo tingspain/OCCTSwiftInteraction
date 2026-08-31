@@ -37,7 +37,13 @@ public final class InteractiveContext: ObservableObject {
 
     @Published public var selectionMode: Set<SelectionMode> = [.body] {
         didSet {
-            if oldValue != selectionMode { clearSelection() }
+            if oldValue != selectionMode {
+                clearSelection()
+                // Hover is transient feedback for the prior tool. Leaving a
+                // face-capable mode must release its per-triangle styles rather
+                // than carrying them into a manipulator or navigation mode.
+                hover = nil
+            }
         }
     }
 

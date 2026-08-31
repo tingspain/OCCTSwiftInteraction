@@ -141,6 +141,24 @@ struct HighlightOverlayTests {
         #expect(clearedBody.triangleStyles.isEmpty)
     }
 
+    @Test func t_changingSelectionMode_clearsTransientFaceHover() throws {
+        let ctx = makeContext()
+        ctx.selectionMode = [.face]
+        let obj = ctx.display(try makeBox())
+        let body = try #require(sourceBody(ctx, target: obj))
+        let raw = UInt32(0) << 16
+        let pick = try #require(PickResult(rawValue: raw, indexMap: [0: body.id]))
+
+        ctx.handleHoverPick(pick)
+        #expect(ctx.hover != nil)
+        #expect(!(try #require(sourceBody(ctx, target: obj))).triangleStyles.isEmpty)
+
+        ctx.selectionMode = [.body]
+
+        #expect(ctx.hover == nil)
+        #expect((try #require(sourceBody(ctx, target: obj))).triangleStyles.isEmpty)
+    }
+
     @Test func t_setHighlightStyle_updatesLiveStyles() throws {
         let ctx = makeContext()
         ctx.selectionMode = [.face]
