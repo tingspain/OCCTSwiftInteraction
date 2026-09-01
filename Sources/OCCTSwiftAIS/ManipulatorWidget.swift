@@ -26,7 +26,9 @@ import simd
 ///
 /// During drag, the target body's `ViewportBody.transform` is updated live
 /// (`preInstallTransform * widget.transform`) so the user sees their input on
-/// the geometry. `uninstall()` restores the pre-install transform.
+/// the geometry. `uninstall()` restores the pre-install transform by default;
+/// an app committing an exact edit can retain that preview until its replacement
+/// scene is ready.
 @MainActor
 public final class ManipulatorWidget: ObservableObject {
 
@@ -165,7 +167,13 @@ public final class ManipulatorWidget: ObservableObject {
         isInstalled = true
     }
 
-    public func uninstall() {
+    /// Removes the widget bodies and, by default, restores the target body's
+    /// transform captured at installation.
+    ///
+    /// Set `restoringTargetTransform` to `false` when an exact-model command
+    /// is about to replace the scene asynchronously. This retains the live
+    /// preview instead of flashing back to the pre-drag position.
+    public func uninstall(restoringTargetTransform: Bool = true) {
         guard isInstalled, let context else {
             isInstalled = false
             self.context = nil
@@ -173,7 +181,8 @@ public final class ManipulatorWidget: ObservableObject {
         }
         let prefix = bodyIDPrefix
         context.removeInternalBodies { $0.hasPrefix(prefix) }
-        if let targetID = context.bodyID(for: target),
+        if restoringTargetTransform,
+            let targetID = context.bodyID(for: target),
             let i = context.bodies.firstIndex(where: { $0.id == targetID })
         {
             context.bodies[i].transform = preInstallTargetTransform
