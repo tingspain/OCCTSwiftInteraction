@@ -85,11 +85,12 @@ let package = Package(
         // targets during the v3.0.0 fanout (ecosystem#39): none needed a source change for it.
         occtDep("OCCTSwift", from: "3.0.0"),
         // ShiftCAD's maintained viewport fork supplies the transient,
-        // selection-neutral point-pick API used for face hover. Pin the exact
-        // reviewed commit so this package and its host resolve one viewport URL.
+        // selection-neutral point-pick API used for face hover and the aligned
+        // selection-outline constant upload. Pin the exact reviewed commit so
+        // this package and its host resolve one viewport URL.
         .package(
             url: "https://github.com/tingspain/OCCTSwiftViewport.git",
-            revision: "e67b5dcdd8d90fb0b9f1897500d0043e477137a0"
+            revision: "8cfb9c125d46088264953dbc5cf6e10c76b9310a"
         ),
         // >=1.8.0: DirectoryWatcher (OCCTSwiftIO#43), which the agent bridge uses to notice a new
         // highlight_requests/<id>.json without polling. This was a branch pin until that shipped.
