@@ -8,6 +8,26 @@ import simd
 @Suite("CADFileLoader.shapeToBodyAndMetadata")
 struct CADFileLoaderTests {
 
+    @Test func t_closedCircleEdgePolylineIncludesItsSeam() {
+        guard let wire = Wire.circle(radius: 10), let circle = Shape.fromWire(wire) else {
+            Issue.record("could not create an exact circle wire")
+            return
+        }
+        let (body, meta) = CADFileLoader.shapeToBodyAndMetadata(
+            circle, id: "circle", color: SIMD4<Float>(1, 0, 0, 1)
+        )
+        guard let polyline = meta?.edgePolylines.first?.points else {
+            Issue.record("circle produced no edge polyline")
+            return
+        }
+        #expect(body != nil)
+        #expect(polyline.count >= 3)
+        #expect(
+            simd_distance(polyline[0], polyline[polyline.count - 1]) < 1e-4,
+            "a topologically closed circle must include its closing display segment"
+        )
+    }
+
     @Test func t_boxRoundTrip() {
         guard let box = Shape.box(width: 10, height: 5, depth: 3) else {
             Issue.record("Shape.box returned nil")

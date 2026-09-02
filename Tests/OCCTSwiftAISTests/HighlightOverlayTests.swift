@@ -103,6 +103,56 @@ struct HighlightOverlayTests {
         }
     }
 
+    @Test func t_edgeHover_resolvesAndHighlightsOnlyThePickedEdge() throws {
+        let ctx = makeContext()
+        ctx.selectionMode = [.body, .face, .edge, .vertex]
+        let obj = ctx.display(try makeBox())
+        let body = try #require(sourceBody(ctx, target: obj))
+        let segmentIndex = try #require(body.edgeIndices.indices.first)
+        let edgeIndex = Int(body.edgeIndices[segmentIndex])
+        let raw = (UInt32(PrimitiveKind.edge.rawValue) << 30) | UInt32(segmentIndex)
+        let pick = try #require(PickResult(rawValue: raw, indexMap: [0: body.id]))
+
+        ctx.handleHoverPick(pick)
+
+        guard case let .edge(hoveredObject, ref) = try #require(ctx.hover) else {
+            Issue.record("edge pick did not resolve an edge hover")
+            return
+        }
+        #expect(hoveredObject == obj)
+        #expect(ref.ordinal == edgeIndex)
+        let overlay = try #require(
+            ctx.bodies.first { $0.id == "ais.topology-highlight.hover.edges" }
+        )
+        #expect(!overlay.edges.isEmpty)
+        #expect(overlay.color == SIMD4<Float>(0.3, 0.8, 1.0, 1.0))
+        #expect(!overlay.isPickable)
+        #expect(ctx.viewport.selectedBodyIDs.isEmpty)
+    }
+
+    @Test func t_vertexHover_resolvesAndUsesANonPickablePointOverlay() throws {
+        let ctx = makeContext()
+        ctx.selectionMode = [.body, .face, .edge, .vertex]
+        let obj = ctx.display(try makeBox())
+        let body = try #require(sourceBody(ctx, target: obj))
+        let pointIndex = try #require(body.vertices.indices.first)
+        let raw = (UInt32(PrimitiveKind.vertex.rawValue) << 30) | UInt32(pointIndex)
+        let pick = try #require(PickResult(rawValue: raw, indexMap: [0: body.id]))
+
+        ctx.handleHoverPick(pick)
+
+        guard case .vertex = try #require(ctx.hover) else {
+            Issue.record("vertex pick did not resolve a vertex hover")
+            return
+        }
+        let overlay = try #require(
+            ctx.bodies.first { $0.id == "ais.topology-highlight.hover.vertices" }
+        )
+        #expect(overlay.vertices.count == 1)
+        #expect(overlay.primitiveKind == .point)
+        #expect(!overlay.isPickable)
+    }
+
     @Test func t_selectedFaceTakesVisualPrecedenceOverHover() throws {
         let ctx = makeContext()
         ctx.selectionMode = [.face]

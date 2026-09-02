@@ -452,13 +452,22 @@ public final class InteractiveContext: ObservableObject {
         bodies.removeAll { predicate($0.id) }
     }
 
-    // MARK: - Highlight overlay (renderer-backed, OCCTSwiftViewport ≥ 0.55.1)
+    // MARK: - Highlight presentation (renderer-backed, OCCTSwiftViewport ≥ 0.55.1)
+
+    private static let topologyHighlightBodyPrefix = "ais.topology-highlight."
 
     /// Body-level selection → `viewport.selectedBodyIDs`.
     ///
-    /// Face-level selection → per-triangle styles on the source body's
-    /// `triangleStyles`. No overlay bodies, no normal-offset push.
+    /// Face-level selection and hover → per-triangle styles on the source body's
+    /// `triangleStyles`.
+    ///
+    /// Edge/vertex selection and hover → small non-pickable geometry bodies rebuilt
+    /// from the source body's existing topology-indexed edge/vertex arrays. This avoids
+    /// tessellating OCCT shapes during pointer movement while still highlighting exactly
+    /// the resolved primitive rather than recolouring its complete owning object.
     private func updateSelectionVisuals() {
+        bodies.removeAll { $0.id.hasPrefix(Self.topologyHighlightBodyPrefix) }
+
         let selectedBodyIDs: Set<String> = Set(
             selection.subshapes.compactMap { sub -> String? in
                 guard case .body(let obj) = sub else { return nil }
@@ -517,6 +526,122 @@ public final class InteractiveContext: ObservableObject {
                 bodies[bodyIdx].triangleStyles = styles
             }
         }
+
+        appendTopologyHighlightBodies()
+    }
+
+    private func appendTopologyHighlightBodies() {
+        var selectedEdges: [[SIMD3<Float>]] = []
+        var selectedVertices: [SIMD3<Float>] = []
+        var hoveredEdges: [[SIMD3<Float>]] = []
+        var hoveredVertices: [SIMD3<Float>] = []
+
+        for subshape in selection.subshapes {
+            appendTopologyGeometry(
+                for: subshape,
+                edges: &selectedEdges,
+                vertices: &selectedVertices
+            )
+        }
+
+        if let hover, !selection.subshapes.contains(hover) {
+            appendTopologyGeometry(
+                for: hover,
+                edges: &hoveredEdges,
+                vertices: &hoveredVertices
+            )
+        }
+
+        appendEdgeHighlightBody(
+            id: "\(Self.topologyHighlightBodyPrefix)selection.edges",
+            edges: selectedEdges,
+            color: highlightStyle.selectionColor
+        )
+        appendVertexHighlightBody(
+            id: "\(Self.topologyHighlightBodyPrefix)selection.vertices",
+            vertices: selectedVertices,
+            color: highlightStyle.selectionColor
+        )
+        appendEdgeHighlightBody(
+            id: "\(Self.topologyHighlightBodyPrefix)hover.edges",
+            edges: hoveredEdges,
+            color: highlightStyle.hoverColor
+        )
+        appendVertexHighlightBody(
+            id: "\(Self.topologyHighlightBodyPrefix)hover.vertices",
+            vertices: hoveredVertices,
+            color: highlightStyle.hoverColor
+        )
+    }
+
+    private func appendTopologyGeometry(
+        for subshape: OCCTSwiftTools.SubShape,
+        edges: inout [[SIMD3<Float>]],
+        vertices: inout [SIMD3<Float>]
+    ) {
+        switch subshape {
+        case .body, .face:
+            return
+        case .edge(let object, let ref):
+            guard let entry = entriesByID[object.id], let metadata = entry.metadata else { return }
+            edges.append(
+                contentsOf: metadata.edgePolylines
+                    .filter { $0.edgeIndex == ref.ordinal }
+                    .map(\.points)
+            )
+        case .vertex(let object, let ref):
+            guard let entry = entriesByID[object.id],
+                  let body = bodies.first(where: { $0.id == entry.bodyID })
+            else { return }
+            if let index = body.vertexIndices.firstIndex(of: Int32(ref.ordinal)),
+               index < body.vertices.count {
+                vertices.append(body.vertices[index])
+            } else if body.vertexIndices.isEmpty, body.vertices.indices.contains(ref.ordinal) {
+                vertices.append(body.vertices[ref.ordinal])
+            } else if let point = ref.shape.vertices().first {
+                vertices.append(SIMD3<Float>(Float(point.x), Float(point.y), Float(point.z)))
+            }
+        }
+    }
+
+    private func appendEdgeHighlightBody(
+        id: String,
+        edges: [[SIMD3<Float>]],
+        color: SIMD3<Float>
+    ) {
+        guard !edges.isEmpty else { return }
+        bodies.append(
+            ViewportBody(
+                id: id,
+                vertexData: [],
+                indices: [],
+                edges: edges,
+                color: SIMD4<Float>(color, 1),
+                primitiveKind: .wire,
+                isPickable: false
+            )
+        )
+    }
+
+    private func appendVertexHighlightBody(
+        id: String,
+        vertices: [SIMD3<Float>],
+        color: SIMD3<Float>
+    ) {
+        guard !vertices.isEmpty else { return }
+        bodies.append(
+            ViewportBody(
+                id: id,
+                vertexData: [],
+                indices: [],
+                edges: [],
+                vertices: vertices,
+                color: SIMD4<Float>(color, 1),
+                pointRadius: 0.12,
+                primitiveKind: .point,
+                isPickable: false
+            )
+        )
     }
 
     // MARK: - Pick / hover wiring
@@ -548,21 +673,19 @@ public final class InteractiveContext: ObservableObject {
         hover = candidate.flatMap { passesInstalledFilters($0) ? $0 : nil }
     }
 
-    /// Resolves a transient face hover from the viewport's visible GPU pick.
+    /// Resolves transient topology hover from the viewport's visible GPU pick.
     ///
     /// This deliberately does not route through `ViewportController.handlePick`:
     /// hover must neither replace `selection` nor update tap state. The same
     /// identity tables used by click selection map the picked triangle to its
-    /// exact source face, so the rendered cyan feedback covers the whole visible
-    /// face rather than just the triangle beneath the pointer.
+    /// exact source face, edge, or vertex. Presentation then uses the same
+    /// per-triangle or topology-overlay path as committed selection.
     public func handleHoverPick(_ result: PickResult?) {
-        guard selectionMode.contains(.face),
-              let result,
+        guard let result,
               result.pickLayer == .userGeometry,
               let id = entriesByBodyID[result.bodyID],
               let entry = entriesByID[id],
               let candidate = resolveSubShape(from: result, entry: entry),
-              case .face = candidate,
               passesInstalledFilters(candidate)
         else {
             hover = nil

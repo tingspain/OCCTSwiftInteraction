@@ -623,7 +623,33 @@ public enum CADFileLoader {
         for (edgeIndex, polyline) in shape.allEdgePolylinesIndexed(
             deflection: deflection, maxPointsPerEdge: maxPointsPerEdge
         ) {
-            let floatPoints = polyline.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) }
+            // OCCTSwift's edge sampler currently accepts a point-capacity rather than a
+            // geometric stopping condition. A finely sampled periodic edge can therefore
+            // fill that capacity before reaching its seam. The result is still a closed
+            // TopoDS_Edge, but the viewport receives only a partial circle. Retry only that
+            // bounded case with the same cap used by WireConverter; ordinary open edges and
+            // already-complete closed edges keep the cheaper bulk result.
+            let sourceEdge = shape.subShape(type: .edge, index: edgeIndex)
+            let isTopologicallyClosed = (sourceEdge?.vertices().count ?? 2) <= 1
+            let retryCapacity = max(maxPointsPerEdge, WireConverter.defaultMaxPointsPerEdge)
+            let completedPolyline: [SIMD3<Double>]
+            if isTopologicallyClosed,
+               maxPointsPerEdge == Self.defaultMaxPointsPerEdge,
+               polyline.count == maxPointsPerEdge,
+               retryCapacity > maxPointsPerEdge,
+               let retry = shape.edgePolyline(
+                   at: edgeIndex,
+                   deflection: deflection,
+                   maxPoints: retryCapacity
+               ),
+               retry.count > polyline.count {
+                completedPolyline = retry
+            } else {
+                completedPolyline = polyline
+            }
+            let floatPoints = completedPolyline.map {
+                SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z))
+            }
             guard floatPoints.count >= 2 else { continue }
             result.append((edgeIndex: edgeIndex, points: floatPoints))
         }
